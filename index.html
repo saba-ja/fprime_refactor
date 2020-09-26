@@ -1,0 +1,439 @@
+<!--
+index.html:
+
+This HTML document sets up the most basic of UIs for the F prime webified GUI layer. This GUI layer is built with the
+Bootstrap CSS, but without the paired JavaScript packages as they conflict with the Vue.js display layer being used.
+
+
+This GUI provides the following items:
+
+1. Events panel showing events in the system
+2. Channels panel showing latest channel readings
+3. Commands panel allowing for commanding of the system
+4. uplink and downlink panels for uploading and downloading files from the spacecraft
+5. Logs file to display in the GDS layer
+
+Note: Bootstrap is used, as it can be run as a CSS framework without many node and JavaScript packages.
+Note: Vue.js annotations are used, as Vue is the data-to-view framework of choice.  It can be run with a single JS
+      dependency, without need for WebPack or other module loaders.
+-->
+<!doctype html>
+<html>
+
+<head>
+    <!-- <link rel="stylesheet" href="third-party/css/bootstrap.min.css"> -->
+    <!-- <link rel="stylesheet" href="third-party/css/vue-select.css"> -->
+    <link rel="stylesheet" href="css/fpstyle.css">
+    <link rel="shortcut icon" href="img/favicon.ico" type="image/x-icon">
+    <!-- Development mode -Vue- should it be needed for debug purposes -->
+    <!--script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script-->
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@5.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+
+    <!-- Third-party JavaScript files, hosted locally to remove internet dependence -->
+    <script src="third-party/js/vue.min.js"></script>
+    <script src="third-party/js/sorttable.js"></script>
+    <!-- JavaScript GDS files -->
+    <script type="module" src="js/gds.js"></script>
+</head>
+
+<body>
+    <!--
+        GDS:
+
+        The primary vue of the GDS is a tabbed view that is composed of separate components for each view. This is
+        where Vue JS is allowed to display its items.
+        -->
+    <div id="tabetc" class="container-fluid fp-flex-repeater fp-full-height">
+        <tabbed-etc v-bind:commands="commands" v-bind:loader="loader" v-bind:uploader="uploader" v-bind:events="events"
+            v-bind:channels="channels" v-bind:cmdhist="cmdhist" v-bind:upfiles="upfiles" v-bind:downfiles="downfiles"
+            v-bind:running="running" v-bind:logs="logs" v-bind:events-active="eventsActive"
+            v-bind:channels-active="channelsActive"></tabbed-etc>
+    </div>
+    <!--
+        Templates:
+
+        The rest of this document is a hidden list of templates representing each of the components used in this web
+        layer.
+        -->
+    <div hidden>
+        <div id="tabetc-template">
+            <v-app id="inspire">
+                <v-navigation-drawer v-model="drawer" app clipped>
+                    <v-list dense>
+                        <v-list-item link v-for="link in links" :key="link.key" v-on:click="route(link.key)">
+                            <v-list-item-action>
+                                <v-icon>{{ link.icon }}</v-icon>
+                            </v-list-item-action>
+                            <v-list-item-content>
+                                <v-list-item-title>{{ link.text }}</v-list-item-title>
+                            </v-list-item-content>
+                        </v-list-item>
+                    </v-list>
+                </v-navigation-drawer>
+
+                <v-app-bar app clipped-left>
+                    <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
+                    <v-toolbar-title>{{config.projectName}}</v-toolbar-title>
+                    <v-spacer></v-spacer>
+                    <v-icon x-large color="green lighten-2" v-if="!noneActive">mdi-check-circle</v-icon>
+                    <v-icon x-large color="red lighten-3" v-if="noneActive">mdi-close</v-icon>
+                </v-app-bar>
+
+                <v-main>
+                    <v-container fluid>
+                        <v-row>
+                            <v-col cols="12">
+                                <h2>{{currentTab}}
+                                </h2>
+                                <command-input :commands="commands" :loader="loader" :cmdhist="cmdhist"
+                                    v-if="currentTab == 'commanding'"></command-input>
+                                <event-list :events="events" v-if="currentTab == 'events'" :commands="commands">
+                                </event-list>
+                                <channel-table :channels="channels" v-if="currentTab == 'channels'"></channel-table>
+                                <uplink :upfiles="upfiles" :uploader="uploader" :running="running"
+                                    v-if="currentTab == 'uplink'"></uplink>
+                                <downlink :downfiles="downfiles" v-if="currentTab == 'downlink'"></downlink>
+                                <logging :logs="logs" v-if="currentTab == 'logs'"></logging>
+                            </v-col>
+                        </v-row>
+                    </v-container>
+                </v-main>
+
+                <v-footer app>
+                    <span>&copy; {{ new Date().getFullYear() }}</span>
+                </v-footer>
+            </v-app>
+        </div>
+
+        <!--
+            TabETC Component:
+
+            The tabbed component has to primary sections:
+
+            1. Navigation, allowing for the changing of tabs in the system
+            2. Tab components only one visable at a time.
+            -->
+        <!-- <template id="tabetc-template">
+            <div class="fp-flex-repeater">
+                <div class="fp-flex-header">
+                    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+                        <span class="navbar-brand">
+                            <img v-bind:src="config.logo" width="50" height="50" v-bind:alt="config.projectName"
+                                v-bind:title="config.projectName">
+                        </span>
+                        <ul class="navbar-nav mr-auto mt-2 mt-lg-0">
+                            <li v-for="tab in tabs" :class="['nav-item', 'nav-link', { active: currentTab == tab }]"
+                                :key="tab" v-on:click="route(tab)">{{ tab }}</li>
+                            <form class="form-inline my-2 my-lg-0">
+                                <div class="btn btn-success" v-on:click="spawn">New Window</div>
+                            </form>
+                        </ul>
+                        <span class="navbar-brand">
+                            <img v-bind:src="noneActive ? config.dataErrorIcon : config.dataSuccessIcon" width="30"
+                                height="30">
+                        </span>
+                    </nav>
+                    <h1>{{ config.projectName }}: {{ currentTab }}</h1>
+                </div>
+                <command-input v-bind:commands="commands" v-bind:loader="loader" v-bind:cmdhist="cmdhist"
+                    v-show="currentTab == 'Commanding'"></command-input>
+                <channel-table v-bind:channels="channels" v-show="currentTab == 'Channels'"></channel-table>
+                <event-list v-bind:events="events" v-show="currentTab == 'Events'" v-bind:commands="commands">
+                </event-list>
+                <uplink v-bind:upfiles="upfiles" v-bind:uploader="uploader" v-bind:running="running"
+                    v-show="currentTab == 'Uplink'"></uplink>
+                <downlink v-bind:downfiles="downfiles" v-show="currentTab == 'Downlink'"></downlink>
+                <logging v-bind:logs="logs" v-show="currentTab == 'Logs'"></logging>
+            </div>
+        </template> -->
+        <!--
+            Logs:
+
+            Logs template used to display log information from the system. Contains a selectable list of logs and a
+            panel that displays the raw text, with light highlighting.
+            -->
+        <template id="logs-template">
+            <div>
+                <v-row align="center">
+                    <v-col class="d-flex" cols="12" sm="6">
+                        <v-autocomplete outlined v-model="selected" :items="options" dense filled label="Filled">
+                        </v-autocomplete>
+                    </v-col>
+                </v-row>
+
+                <v-textarea v-if="selected" solo :label="selected" :value="logs[selected]" :auto-grow="true"
+                    :clearable="false" :no-resize="true" :readonly="true">
+                </v-textarea>
+            </div>
+        </template>
+        <!--
+            Command Input:
+
+            Displays a list of selectable commands. It also displays the list of arguments available to be sent with the
+            selected command as it is passed to the ground.
+            -->
+        <template id="command-input-template">
+            <div>
+                <v-row>
+                    <v-col md="4">
+                        <v-btn color="primary" v-on:click="sendCommand" :disabled="active" :loading="active">Send
+                            Command
+                        </v-btn>
+                    </v-col>
+                </v-row>
+                <v-row>
+                    <v-col md="4">
+                        <v-autocomplete outlined id="mnemonic" :clearable="false" :searchable="true" :filterable="true"
+                            label="Mnemonic" :items="commandList" item-text="full_name" item-value="full_name"
+                            return-object v-model="selected">
+                        </v-autocomplete>
+                    </v-col>
+                </v-row>
+                <v-row>
+                    <v-col md="4">
+                        <v-btn color="error" v-if="selected['args'].length" v-on:click="clearArguments">Clear
+                            Arguments</v-btn>
+                    </v-col>
+                </v-row>
+
+                <div v-for="argument in selected.args">
+                    <command-argument :argument="argument"></command-argument>
+                </div>
+
+                <v-row>
+                    <v-col>
+                        <p>Command History</p>
+                    </v-col>
+                    <v-spacer></v-spacer>
+                    <v-col>
+                        <v-text-field outlined v-model="cmd_hist_filter" label="Filter" class="mx-4"
+                            prepend-inner-icon="mdi-filter">
+                        </v-text-field>
+                    </v-col>
+                </v-row>
+                <v-row>
+                    <v-col>
+                        <v-data-table dense :search="cmd_hist_filter" :headers="hist_table_header" :items="cmdhist"
+                            item-key="unique_key" class="elevation-1">
+                        </v-data-table>
+                    </v-col>
+                </v-row>
+            </div>
+        </template>
+
+        <!--
+            Command Item:
+
+            A single command item to send.
+            -->
+        <!-- <template id="command-item-template">
+            <a href="#" class="list-group-item list-group-item-action flex-column align-items-start">
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">{{calculateCommandTime + " " + command.template.mnemonic }}</h5>
+                    <small>Command Id 0x{{ command.id.toString(16) }}</small>
+                </div>
+                <p class="mb-1">Arguments: {{ command.args }}</p>
+            </a>
+        </template> -->
+        <!--
+            Command Argument:
+
+            Command argument template for displaying a single argument.
+            -->
+        <template id="command-argument-template">
+            <div>
+                <v-row>
+                    <v-col md="4">
+                        <v-text-field v-if="argument.type !== 'Enum'" outlined :type="inputType[0]" :id="argument.name"
+                            :pattern="inputType[1]" v-model="argument.value" :label="argument.name" :clearable="true">
+                        </v-text-field>
+                    </v-col>
+                </v-row>
+                <v-row>
+                    <v-col md="4">
+                        <v-autocomplete v-if="argument.type == 'Enum'" :id="argument.name" style="flex: 1 1 auto;"
+                            :clearable="true" :searchable="true" :filterable="true" :label="argument.name"
+                            :items="argument.possible" v-model="argument.value">
+                        </v-autocomplete>
+                    </v-col>
+                </v-row>
+
+                <div>{{ argument.error }}</div>
+            </div>
+        </template>
+
+        <!--
+            Event Templates:
+
+            These templates provide for event listing items. Events use the FPTable component to configure a nice list
+            of events for display.
+            -->
+        <template id="event-list-template">
+            <div>
+                <v-data-table dense :headers="event_table_header" :items="events" item-key="key"
+                    :item-class="get_style">
+                </v-data-table>
+            </div>
+        </template>
+        <!--
+            Channel Templates:
+
+            These templates display a channel table.  It takes all channels supplied in a list, and prints a row for
+            each channel. If this list contains duplicates, then the display will contain duplicates. This can be fixed
+            -->
+        <template id="channel-table-template">
+            <div>
+                <v-data-table dense :headers="channel_table_header" :items="conform">
+                    <template v-slot:body="{ items }">
+                        <tbody>
+                            <tr v-for="(item, index) in conform" :key="index">
+                                <td v-for="(val, index2) in columnify(item)" :key="index2">
+                                    {{ val }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </template>
+                </v-data-table>
+            </div>
+        </template>
+        <!-- Uplink;
+
+            Uplink template defines a control form used to upload files to a given destination.
+
+            Uses FP table to display the rows of the uplink table. This specifically chooses the file-row template for
+            the rows, as it is customized for use with uplink.
+            -->
+        <template id="uplink-template">
+            <div>
+                <v-row>
+                    <v-col md="6">
+                        <!-- <label>Add Files to Uplink:</label>
+                        <input type="file" class="btn btn-active" v-bind:files="selected" multiple
+                            v-on:change="handelFiles" /> -->
+                        <v-file-input label="Add Files to Uplink" v-model="files" @change="handelFiles" chips clearable
+                            multiple outlined>
+                        </v-file-input>
+                    </v-col>
+                </v-row>
+                <v-row>
+                    <v-col md="6">
+                        <v-text-field label="Destination Folder" outlined v-model="destination" pattern="/.*"
+                            prepend-icon="mdi-folder-outline" @change="update_destination">
+                        </v-text-field>
+                    </v-col>
+                </v-row>
+                <v-row>
+                    <v-col>
+                        <v-btn v-on:click="uplinkFiles" color="success">Submit Uplink <v-icon right dark>
+                                mdi-cloud-upload</v-icon>
+                        </v-btn>
+                        <v-btn v-if="running" color="warning" v-on:click="pauseUplink">Pause Uplink Queue
+                            <v-icon right dark>mdi-pause</v-icon>
+                        </v-btn>
+                        <v-btn v-if="!running" color="warning" v-on:click="unpauseUplink">
+                            Unpause Uplink Queue<v-icon right dark>mdi-play</v-icon>
+                        </v-btn>
+                    </v-col>
+                </v-row>
+                <div v-if="error != null" class="alert alert-danger" role="alert">
+                    {{ this.error }}
+                </div>
+                <div>
+                    <v-data-table :headers="uplink_table_header" :items="elements"></v-data-table>
+                </div>
+
+                <!-- <fp-table
+                    :header-columns="['Start Timne', 'End Time', 'Source', 'Destination', 'State', 'Control', 'Progress']"
+                    :items="elements" :item-to-unique="keyify" :display-template="'file-row'"
+                    :item-to-columns="columnify"></fp-table> -->
+            </div>
+        </template>
+        <!-- Downlink;
+
+            Uses FP table to display the rows of the downlink table. This specifically chooses the file-row template for
+            the rows, as it is customized for use with downlink.
+            -->
+        <template id="downlink-template">
+            <div>
+                <div v-for="item in elements">
+                    {{item}}
+                </div>
+                <v-data-table dense :headers="downlink_table_header" :items="[]">
+                </v-data-table>
+            </div>
+            <!-- <fp-table
+                :header-columns="['Start Timne', 'End Time', 'Source', 'Destination', 'State', 'Control', 'Progress']"
+                :items="elements" :item-to-unique="keyify" :display-template="'file-row'" :item-to-columns="columnify">
+            </fp-table> -->
+        </template>
+
+        <template id="setting-template">
+            <div>
+                <v-switch v-model="switch1" inset :label="`Switch 1: ${switch1.toString()}`"></v-switch>
+            </div>
+        </template>
+
+        <!-- FP Table Templates:
+
+            FP Table is designed to create a common look-and-feel across all the table displays used in F´. This
+            provides for a common filtering box, view loading box, and table with header information. It is used for the
+            following table types:
+
+            1. Command History
+            2. Event History
+            3. Active Telemetry
+
+            This section consists of two templates, the row template, and the table template.
+            -->
+        <!-- <template id="fp-row-template">
+            <tr :class="calculateStyle">
+                <th v-if="editing" v-on:input="onInput"><input type="checkbox" :checked="inView"></th>
+                <td v-for="(column, index) in calculatedColumns" v-on:dblclick="clickAction(item)" v-html="column"></td>
+            </tr>
+        </template> -->
+
+        <!-- File Row:
+
+            This is an alternate display for the row in an FP table that can show a file list item including commanding
+            and progress. It is used by Uplink and downlink
+            -->
+        <!-- <template id="file-row-template">
+            <tr>
+                <td>{{ item.start }}</td>
+                <td>{{ item.end }}</td>
+                <td>{{ item.source }}</td>
+                <td>{{ item.destination }}</td>
+                <td>{{ item.state }}</td>
+                <td v-if="item.uplink">
+                    <button v-if="item.state != 'FINISHED' && item.state != 'CANCELED'" class="btn btn-danger"
+                        v-on:click="fileAction">
+                        {{ (item.state == "TRANSMITTING" ) ? "Cancel" : "Remove" }}
+                    </button>
+                </td>
+                <td v-if="!item.uplink">
+                    <a v-if="item.state == 'FINISHED'" class="btn btn-danger" :href="'/download/files/' + basename"
+                        :download="basename">
+                        Download
+                    </a>
+                </td>
+                <td>
+                    <div class="progress">
+                        <div class="progress-bar bg-success" role="progressbar" :aria-valuenow="item.percent"
+                            aria-valuemin="0" aria-valuemax="100" :style="{width: item.percent + '%'}">
+                            {{ item.percent }}%
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </template> -->
+
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+
+</body>
+
+</html>
